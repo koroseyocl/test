@@ -21,7 +21,7 @@ if (!BOT_TOKEN || !CHAT_ID) {
 const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendWidget`, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ chat_id: CHAT_ID, html, height: 340, caption: '💎 Тапни по блоку, чтобы разбить его' }),
+  body: JSON.stringify({ chat_id: CHAT_ID, html, height: 340, caption: '⛏ Тапай по руде, чтобы добыть алмазы' }),
 });
 const body = await res.json();
 if (!body.ok) {

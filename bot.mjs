@@ -21,7 +21,7 @@ async function api(method, body = {}) {
 }
 
 function sendWidget(chat_id) {
-  return api('sendWidget', { chat_id, html, height: 340, caption: '💎 Тапни по блоку, чтобы разбить его' });
+  return api('sendWidget', { chat_id, html, height: 340, caption: '⛏ Тапай по руде, чтобы добыть алмазы' });
 }
 
 async function handle(msg) {
@@ -36,7 +36,7 @@ async function handle(msg) {
   }
 }
 
-await api('setMyCommands', { commands: [{ command: 'diamonds', description: '💎 Прислать новый виджет с алмазами' }] });
+await api('setMyCommands', { commands: [{ command: 'diamonds', description: '⛏ Прислать новый виджет с алмазной рудой' }] });
 const me = await api('getMe');
 console.log(`@${me.username} is running. Send /diamonds in the chat.`);
 

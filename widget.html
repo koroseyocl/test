@@ -1,46 +1,54 @@
 <!doctype html>
 <meta charset=utf-8>
 <style>
-html,body{margin:0;height:100%;min-height:320px;overflow:hidden;background:transparent;user-select:none}
-canvas{display:block;width:100%;height:100%;touch-action:none}
+html,body{margin:0;height:340px;overflow:hidden;background:transparent;user-select:none}
+canvas{display:block;width:100%;height:340px;touch-action:none}
 #n{position:absolute;left:10px;top:8px;font:600 13px system-ui,sans-serif;color:var(--tg-theme-hint-color,#8aa);pointer-events:none}
 </style>
 <canvas id=c></canvas><div id=n></div>
 <script>
+// Telegram widget budget: <=4000 canvas commands per task and ~2us/command of
+// main-thread time, so every sprite is pre-rendered once and blitted with drawImage.
 const TW=window.TelegramWidget,cv=document.getElementById('c'),g=cv.getContext('2d'),N=document.getElementById('n');
 const PAL=['#f4fffe','#b5faf4','#6fe8df','#3fcac3','#249e99','#16716e'];
-const R=Math.random,G=1900,HP=Math.PI/2;
-// 8x8 Minecraft-style diamond block texture (seeded so it's stable)
-let s0=9;const sr=()=>(s0=s0*16807%2147483647)/2147483647,TEX=[];
-for(let j=0;j<8;j++)for(let i=0;i<8;i++){
+const R=Math.random,G=1900,HP=Math.PI/2,MAXP=140,T=4;
+function mk(w,h,f){const c=document.createElement('canvas');c.width=w;c.height=h;f(c.getContext('2d'));return c}
+// 8x8 block texture, each texel T px
+let s0=9;const sr=()=>(s0=s0*16807%2147483647)/2147483647;
+const TEX=mk(8*T,8*T,x=>{for(let j=0;j<8;j++)for(let i=0;i<8;i++){
   let k=2+(sr()*2|0);
   if(i==0||j==0)k=1;else if(i==7||j==7)k=4;else if(sr()<.18)k=sr()<.5?0:5;
-  TEX.push(k)}
-let W,H,B=[],P=[],next=0,shake=0,last=0,cnt=+(localStorage.n||0);
-const floorY=()=>H-((TW&&TW.contentSafeAreaInset||{}).bottom||0)-3;
+  x.fillStyle=PAL[k];x.fillRect(i*T,j*T,T,T)}});
+const GEM=mk(16,16,x=>{
+  x.fillStyle='#3fcac3';x.beginPath();x.moveTo(8,1);x.lineTo(14,8);x.lineTo(8,15);x.lineTo(2,8);x.fill();
+  x.fillStyle='#b5faf4';x.beginPath();x.moveTo(8,1);x.lineTo(14,8);x.lineTo(8,8);x.fill();
+  x.fillStyle='#fff';x.fillRect(6,4,2,2)});
+let W,H,DPR,B=[],P=[],next=0,last=0,cnt=+(localStorage.n||0),fy=0,line='#8aa';
 function fit(){
-  W=cv.clientWidth;H=cv.clientHeight;
-  // canvas is capped at 2048x2048 device pixels
-  const d=Math.min(devicePixelRatio||1,2,2048/W,2048/H);
-  cv.width=W*d|0;cv.height=H*d|0;g.setTransform(d,0,0,d,0,0)}
+  const w=cv.clientWidth,h=cv.clientHeight;
+  if(w==W&&h==H)return;
+  W=w;H=h;
+  // all widget canvases together are capped at 2048x2048 pixels
+  DPR=Math.min(devicePixelRatio||1,2,Math.sqrt(3e6/(W*H)));
+  cv.width=W*DPR|0;cv.height=H*DPR|0;g.imageSmoothingEnabled=false;
+  fy=H-((TW&&TW.contentSafeAreaInset||{}).bottom||0)-3}
+function theme(){line=getComputedStyle(N).color}
 function spawn(x){
-  const s=26+R()*18;
-  B.push({x:x??s+R()*(W-2*s),y:-s,vx:0,vy:60+R()*120,a:(R()-.5)*.6,va:(R()-.5)*3,s})}
+  const s=28+R()*18;
+  B.push({x:x??s+R()*(W-2*s),y:-s,vy:60+R()*120,a:(R()-.5)*.6,va:(R()-.5)*3,s})}
 function count(){N.textContent='💎 '+cnt;localStorage.n=cnt}
-// Break a block into 4x4 textured chunks + loose gems flying away from (px,py)
+function add(p){if(P.length>=MAXP)P.shift();P.push(p)}
+// 3x3 textured chunks + gems, thrown away from the impact point (px,py)
 function shatter(b,px,py,f){
-  const q=b.s/4,co=Math.cos(b.a),si=Math.sin(b.a);
-  for(let j=0;j<4;j++)for(let i=0;i<4;i++){
+  const q=b.s/3,co=Math.cos(b.a),si=Math.sin(b.a),ts=8*T/3;
+  for(let j=0;j<3;j++)for(let i=0;i<3;i++){
     const lx=(i+.5)*q-b.s/2,ly=(j+.5)*q-b.s/2,x=b.x+lx*co-ly*si,y=b.y+lx*si+ly*co,
-      dx=x-px,dy=y-py,d=Math.hypot(dx,dy)+1,k=(.4+R())*f,t=j*16+i*2;
-    P.push({x,y,vx:b.vx+dx/d*k,vy:dy/d*k-f*.4,a:b.a,va:(R()-.5)*14,s:q,
-      c:[TEX[t],TEX[t+1],TEX[t+8],TEX[t+9]],t:0,l:3+R()*2})}
-  for(let i=0;i<8;i++){const a=R()*6.28,k=f*(.6+R());
-    P.push({x:b.x,y:b.y,vx:Math.cos(a)*k,vy:Math.sin(a)*k-f*.6,a:0,va:(R()-.5)*20,s:2.5+R()*3,c:null,t:0,l:3.5+R()*2,ph:R()*9})}
-  shake=Math.min(7,f/60);cnt++;count();
-  if(P.length>600)P.splice(0,P.length-600)}
+      dx=x-px,dy=y-py,d=Math.hypot(dx,dy)+1,k=(.4+R())*f;
+    add({x,y,vx:dx/d*k,vy:dy/d*k-f*.4,a:b.a,va:(R()-.5)*14,s:q,sx:i*ts,sy:j*ts,sw:ts,t:0,l:2.5+R()*1.5})}
+  for(let i=0;i<5;i++){const a=R()*6.28,k=f*(.6+R());
+    add({x:b.x,y:b.y,vx:Math.cos(a)*k,vy:Math.sin(a)*k-f*.6,a:0,va:(R()-.5)*16,s:7+R()*5,gem:1,t:0,l:3+R()*1.5})}
+  cnt++;count()}
 function step(dt){
-  const fy=floorY();
   for(const b of B){b.vy+=G*dt;b.y+=b.vy*dt;b.a+=b.va*dt;
     if(b.y+b.s/2>=fy){b.y=fy-b.s/2;shatter(b,b.x,fy,b.vy*.3+160);b.dead=1}}
   B=B.filter(b=>!b.dead);
@@ -48,40 +56,35 @@ function step(dt){
     p.vy+=G*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.a+=p.va*dt;p.t+=dt;
     const r=p.s/2,fl=fy-r;
     if(p.y>fl){p.y=fl;
-      // hard landing splits a 2x2 chunk into four single-pixel shards
-      if(p.vy>520&&p.c&&p.c.length>1){p.dead=1;
-        p.c.forEach((k,i)=>P.push({x:p.x+(i%2-.5)*r,y:p.y,vx:p.vx+(R()-.5)*260,vy:-p.vy*(.2+R()*.3),a:p.a,va:(R()-.5)*18,s:r,c:[k],t:p.t,l:p.l}))}
+      // hard landing splits a chunk into four smaller shards
+      if(p.vy>560&&!p.gem&&p.sw>T*1.5){p.dead=1;const h=p.sw/2;
+        for(let i=0;i<4;i++)add({x:p.x+(i%2-.5)*r,y:p.y,vx:p.vx+(R()-.5)*260,vy:-p.vy*(.2+R()*.3),a:p.a,va:(R()-.5)*18,s:r,sx:p.sx+(i%2)*h,sy:p.sy+(i>>1)*h,sw:h,t:p.t,l:p.l})}
       else{p.vy*=-.3;p.vx*=.7;p.va*=.5;
         if(Math.abs(p.vy)<45){p.vy=0;p.vx*=.85;p.va=0;p.a+=(Math.round(p.a/HP)*HP-p.a)*.3}}}
     if(p.x<r){p.x=r;p.vx*=-.5}else if(p.x>W-r){p.x=W-r;p.vx*=-.5}}
   P=P.filter(p=>!p.dead&&p.t<p.l);
-  if((next-=dt)<0&&B.length<6){spawn();next=.5+R()*.9}}
-function draw(now){
-  g.clearRect(0,0,W,H);g.save();
-  if(shake>.1){g.translate((R()-.5)*shake,(R()-.5)*shake);shake*=.85}
-  g.globalAlpha=.25;g.fillStyle=getComputedStyle(N).color;g.fillRect(0,floorY(),W,1.5);
-  for(const b of B){const p=b.s/8;g.globalAlpha=1;g.save();g.translate(b.x,b.y);g.rotate(b.a);
-    for(let i=0;i<64;i++){g.fillStyle=PAL[TEX[i]];g.fillRect(-b.s/2+(i%8)*p,-b.s/2+(i>>3)*p,p+.4,p+.4)}
-    g.restore()}
-  for(const p of P){g.globalAlpha=Math.max(0,Math.min(1,(p.l-p.t)/.7));g.save();g.translate(p.x,p.y);g.rotate(p.a);
-    const s=p.s;
-    if(!p.c){g.fillStyle='#7ff6ee';g.beginPath();g.moveTo(0,-s);g.lineTo(s*.7,0);g.lineTo(0,s);g.lineTo(-s*.7,0);g.fill();
-      g.fillStyle='#f4fffe';g.beginPath();g.moveTo(0,-s);g.lineTo(s*.7,0);g.lineTo(0,0);g.fill();
-      if(Math.sin(now/90+p.ph)>.9){g.fillStyle='#fff';g.fillRect(-s*1.6,-.5,s*3.2,1);g.fillRect(-.5,-s*1.6,1,s*3.2)}}
-    else if(p.c.length>1){const h=s/2;p.c.forEach((k,i)=>{g.fillStyle=PAL[k];g.fillRect(-h+(i%2)*h,-h+(i>>1)*h,h+.3,h+.3)})}
-    else{g.fillStyle=PAL[p.c[0]];g.fillRect(-s/2,-s/2,s,s)}
-    g.restore()}
-  g.restore()}
+  if((next-=dt)<0&&B.length<5){spawn();next=.6+R()*.9}}
+function put(x,y,a,al){
+  const c=Math.cos(a)*DPR,s=Math.sin(a)*DPR;
+  g.setTransform(c,s,-s,c,x*DPR,y*DPR);g.globalAlpha=al}
+function draw(){
+  g.setTransform(1,0,0,1,0,0);g.globalAlpha=1;g.clearRect(0,0,cv.width,cv.height);
+  g.globalAlpha=.25;g.fillStyle=line;g.fillRect(0,fy*DPR,cv.width,1.5*DPR);
+  for(const b of B){put(b.x,b.y,b.a,1);g.drawImage(TEX,-b.s/2,-b.s/2,b.s,b.s)}
+  for(const p of P){const s=p.s;put(p.x,p.y,p.a,Math.min(1,(p.l-p.t)/.6));
+    if(p.gem)g.drawImage(GEM,-s/2,-s/2,s,s);
+    else g.drawImage(TEX,p.sx,p.sy,p.sw,p.sw,-s/2,-s/2,s,s)}}
 function loop(now){
   const dt=Math.min(.033,(now-(last||now))/1000);last=now;
-  step(dt);draw(now);requestAnimationFrame(loop)}
+  step(dt);draw();requestAnimationFrame(loop)}
 cv.addEventListener('pointerdown',e=>{
-  const x=e.offsetX,y=e.offsetY,b=B.find(b=>Math.abs(x-b.x)<b.s/2+8&&Math.abs(y-b.y)<b.s/2+8);
-  if(b){shatter(b,x,y,420);b.dead=1;B=B.filter(o=>o!=b)}else spawn(x);
+  const x=e.offsetX,y=e.offsetY,b=B.find(b=>Math.abs(x-b.x)<b.s/2+10&&Math.abs(y-b.y)<b.s/2+10);
+  if(b){shatter(b,x,y,420);B=B.filter(o=>o!=b)}else spawn(x);
   TW&&TW.HapticFeedback&&TW.HapticFeedback.impactOccurred(b?'medium':'light')});
-addEventListener('resize',fit);
-// rAF is paused while off screen; reset the clock so we don't jump on return
+if(window.ResizeObserver)new ResizeObserver(fit).observe(cv);
+// frames stop while off screen; reset the clock so physics doesn't jump on return
 document.addEventListener('visibilitychange',()=>last=0);
-fit();count();requestAnimationFrame(loop);
+if(TW&&TW.onEvent){TW.onEvent('themeChanged',theme);TW.onEvent('contentSafeAreaChanged',()=>{W=0;fit()})}
+fit();theme();count();draw();requestAnimationFrame(loop);
 TW&&TW.ready&&TW.ready();
 </script>

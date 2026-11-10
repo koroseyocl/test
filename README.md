@@ -10,4 +10,10 @@ node send.mjs --check                          # проверить лимиты
 BOT_TOKEN=123:abc CHAT_ID=111 node send.mjs     # отправить (только в личку с ботом)
 ```
 
+Бот с командой `/diamonds` (присылает новый виджет), должен быть постоянно запущен:
+
+```bash
+BOT_TOKEN=123:abc node bot.mjs                  # Windows cmd: set BOT_TOKEN=123:abc& node bot.mjs
+```
+
 Локально можно открыть `widget.html` в браузере.

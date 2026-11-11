@@ -1,86 +1,109 @@
 <!doctype html>
 <meta charset=utf-8>
 <style>
-html,body{margin:0;height:340px;overflow:hidden;user-select:none}
-canvas{display:block;width:100%;height:340px;touch-action:none;image-rendering:pixelated}
+html,body{margin:0;height:360px;overflow:hidden;user-select:none}
+canvas{display:block;width:100%;height:360px;touch-action:none}
 </style>
 <canvas id=c></canvas>
 <script>
 // Telegram widget budget: <=4000 canvas commands per task, ~2us each on the app's
-// main thread. Every texture is pre-rendered once; a frame is ~1 drawImage per object.
+// main thread. Textures and the static backdrop are pre-rendered once; a frame is
+// ~1 drawImage per object.
 const TW=window.TelegramWidget,cv=document.getElementById('c'),g=cv.getContext('2d');
-const R=Math.random,GR=1800,S=32,MAXP=160;
-let seed=7;const sr=()=>(seed=seed*16807%2147483647)/2147483647,pick=a=>a[sr()*a.length|0];
-function tex(n,f){const c=document.createElement('canvas');c.width=c.height=n;const x=c.getContext('2d');f(x);return c}
+const R=Math.random,S=48,K=S/16,GB=520,VMAX=240,GP=1300,MAXP=160;
+let seed=11;const sr=()=>(seed=seed*16807%2147483647)/2147483647;
+function tex(w,h,f){const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');f(x);return c}
 const px=(x,c,i,j)=>{x.fillStyle=c;x.fillRect(i,j,1,1)};
-const C={a:'#e1fff9',b:'#4aedd9',c:'#20c5b5',d:'#0e7f75',e:'#0b4e4a'};
-const map=(x,m)=>m.forEach((r,j)=>[...r].forEach((k,i)=>C[k]&&px(x,C[k],i,j)));
-const ORE=tex(16,x=>{
-  for(let j=0;j<16;j++)for(let i=0;i<16;i++)px(x,pick(['#7f7f7f','#747474','#888','#6b6b6b','#7a7a7a','#959595']),i,j);
-  map(x,['','  ab        bc',' abcd      bbcd','  cdd       dd','   d','          ab','   ab    abccd','  abcd    bcdd','   cdd     d','    d','            ab','  ab       abcd',' abccd      cdd','  bcdd       d','   dd'])});
-const GEM=tex(16,x=>map(x,['','','','     eeeeee','    eaabbbbe','   eabbbbbcce','  eabbbbbbbcce','  ebbbbbbbccde','   ebbbbbccde','    ebbbccde','     ebccde','      ecde','       ee']));
-const GRASS=tex(16,x=>{for(let i=0;i<16;i++){const d=3+(sr()<.4?1+(sr()*2|0):0);
-  for(let j=0;j<16;j++)px(x,j<d?pick(['#5d9b3a','#6aac44','#4f8a2f']):pick(['#866043','#79553a','#966c4a','#6c4b31']),i,j)}});
+// blotchy 16x16 noise, wrapped, quantized to a palette
+function noise(x,pal,y0=0){const n=[];for(let i=0;i<256;i++)n[i]=sr();
+  for(let j=y0;j<16;j++)for(let i=0;i<16;i++){const v=(n[j*16+i]*2+n[j*16+(i+1)%16]+n[((j+1)%16)*16+i])/4;
+    px(x,pal[Math.min(pal.length-1,(v-.15)/.7*pal.length|0)],i,j)}}
+const STONE=['#5f5f5f','#6c6c6c','#787878','#838383','#8f8f8f','#9b9b9b'];
+// vanilla-like ore: shaded gem clusters with a dark rim cut into the stone
+const ORE=tex(16,16,x=>{noise(x,STONE);
+  const on=new Set;
+  for(const[a,b]of[[3,3],[11,2],[7,7],[12,10],[3,11],[9,13]]){on.add(a+b*16);
+    for(let k=0;k<4;k++){const i=a+(sr()*3|0)-1,j=b+(sr()*3|0)-1;on.add(i+j*16)}}
+  const has=(i,j)=>on.has(i+j*16);
+  for(let j=0;j<16;j++)for(let i=0;i<16;i++){
+    if(has(i,j))px(x,!has(i-1,j)||!has(i,j-1)?(has(i+1,j)&&has(i,j+1)?'#d6fffa':'#7ff6e8'):!has(i+1,j)||!has(i,j+1)?'#139a90':'#36d3c3',i,j);
+    else if(has(i-1,j)||has(i,j-1)||has(i-1,j-1))px(x,'#3c4a4a',i,j)}});
+const C={o:'#0c3b38',a:'#ffffff',b:'#bdfdf4',c:'#5ff0de',d:'#25c3b2',f:'#13857d',g:'#0d5f5a'};
+const GEM=tex(16,16,x=>['','','    oooooooo','   oabbbcbbco','  oabbcbbcccdo',' oabbccbcccddfo',' obcccccccddffo','  obcccccddffo','   obccccdffo','    obccdffo','     obcdfo','      obfo','       oo'].forEach((r,j)=>[...r].forEach((k,i)=>C[k]&&px(x,C[k],i,j))));
+const GRASS=tex(16,16,x=>{noise(x,['#5a3c26','#6c4b31','#79553a','#866043','#966c4a']);
+  for(let i=0;i<16;i++){const d=3+(sr()<.5?1+(sr()*3|0):0);
+    for(let j=0;j<d;j++)px(x,j==0?'#8acb58':['#4f8a2f','#5d9b3a','#6aac44','#77b84c'][sr()*4|0],i,j);px(x,'#3f7224',i,d-1)}});
 // cumulative crack overlays, like vanilla destroy stages
-const CR=[];{let p;for(let k=0;k<3;k++)CR.push(p=tex(16,x=>{p&&x.drawImage(p,0,0);x.fillStyle='rgba(0,0,0,.5)';
-  for(let r=0;r<4;r++){let i=8,j=8;for(let s=0;s<3+k*3;s++){i+=(sr()*3|0)-1;j+=(sr()*3|0)-1;x.fillRect(i,j,1,1)}}}))}
-const SLOT=tex(20,x=>{x.fillStyle='#8b8b8b';x.fillRect(0,0,20,20);x.fillStyle='#373737';x.fillRect(0,0,20,1);x.fillRect(0,0,1,20);
-  x.fillStyle='#fff';x.fillRect(0,19,20,1);x.fillRect(19,0,1,20);x.drawImage(GEM,2,1)});
-const B=[],P=[],I=[],CL=[0,1,2].map(k=>({x:k*150+R()*60,y:14+R()*40,w:50+R()*50}));
-let W,H,D,fy,SKY,next=0,last=0,pop=0,cnt=+(localStorage.n||0);
+const CR=[];{let p;for(let k=0;k<3;k++)CR.push(p=tex(16,16,x=>{p&&x.drawImage(p,0,0);x.fillStyle='rgba(20,20,20,.6)';
+  for(let r=0;r<5;r++){let i=8,j=8;for(let s=0;s<2+k*3;s++){i+=(sr()*3|0)-1;j+=(sr()*3|0)-1;x.fillRect(i,j,1,1)}}}))}
+const SLOT=tex(20,20,x=>{x.fillStyle='#8b8b8b';x.fillRect(0,0,20,20);x.fillStyle='#373737';x.fillRect(0,0,20,1);x.fillRect(0,0,1,20);
+  x.fillStyle='#fff';x.fillRect(0,19,20,1);x.fillRect(19,0,1,20);x.drawImage(GEM,2,2)});
+const SH=tex(32,8,x=>{const r=x.createRadialGradient(16,4,0,16,4,16);r.addColorStop(0,'rgba(0,0,0,.45)');r.addColorStop(1,'rgba(0,0,0,0)');
+  x.setTransform(1,0,0,.25,0,3);x.fillStyle=r;x.fillRect(0,-16,32,32)});
+const CLOUD=[0,1,2].map(()=>tex(14,4,x=>{for(let j=0;j<4;j++)for(let i=0;i<14;i++)
+  if(sr()<(j==0||j==3?.45:.9)-Math.abs(i-6.5)/14)px(x,j==3?'#dfe8f6':'#fff',i,j)}));
+const B=[],P=[],I=[],CL=CLOUD.map((t,k)=>({t,x:k*170+R()*60,y:16+k*22+R()*10,v:5+k*2}));
+let W,H,D,fy,BG,next=0,last=0,pop=0;
 const keep=(a,f)=>{let n=0;for(const o of a)if(f(o))a[n++]=o;a.length=n};
 const add=p=>{if(P.length>=MAXP)P.shift();P.push(p)};
+const q=v=>Math.round(v*D)/D;
+function backdrop(){
+  BG=tex(W*D|0,fy*D|0,x=>{x.scale(D,D);x.imageSmoothingEnabled=false;
+    const s=x.createLinearGradient(0,0,0,fy);s.addColorStop(0,'#5d8ff0');s.addColorStop(1,'#c3d8ff');x.fillStyle=s;x.fillRect(0,0,W,fy);
+    x.fillStyle='rgba(255,250,215,.35)';x.fillRect(W-84,22,44,44);x.fillStyle='#fffbe2';x.fillRect(W-76,30,28,28);
+    for(const[c,b,a,o]of[['#a4bfe9',.6,40,1],['#82aee0',.45,26,4],['#5f9450',.3,18,2]])
+      for(let i=0;i<W;i+=8){const h=b*fy*.35+a*Math.sin(i/57+o)+a*.6*Math.sin(i/23+o*3);x.fillStyle=c;x.fillRect(i,fy-(h/8|0)*8,8,fy)}
+    x.fillStyle='rgba(0,0,0,.08)';x.fillRect(0,fy-8,W,8)})}
 function fit(){
   const w=cv.clientWidth,h=cv.clientHeight;if(w==W&&h==H)return;W=w;H=h;
-  // all widget canvases together are capped at 2048x2048 pixels
-  D=Math.min(devicePixelRatio||1,2,Math.sqrt(3.5e6/(W*H)));
-  cv.width=W*D|0;cv.height=H*D|0;g.imageSmoothingEnabled=false;g.font='bold 14px monospace';g.textAlign='right';
-  fy=H-S-((TW&&TW.contentSafeAreaInset||{}).bottom||0);
-  SKY=g.createLinearGradient(0,0,0,fy);SKY.addColorStop(0,'#6f9cff');SKY.addColorStop(1,'#bcd4ff')}
-function spawn(x){B.push({x:Math.max(S/2,Math.min(W-S/2,x??S/2+R()*(W-S))),y:-S,vy:60+R()*100,h:0})}
+  // all widget canvases together (screen + backdrop) are capped at 2048x2048 pixels
+  D=Math.min(devicePixelRatio||1,2,Math.sqrt(1.9e6/(W*H)));
+  cv.width=W*D|0;cv.height=H*D|0;g.imageSmoothingEnabled=false;
+  fy=H-S-((TW&&TW.contentSafeAreaInset||{}).bottom||0);backdrop()}
+function spawn(x){B.push({x:Math.max(S/2,Math.min(W-S/2,x??S/2+R()*(W-S))),y:-S/2,vy:20,h:0})}
 // 4x4 chunks sampled from the texture, thrown away from (qx,qy), plus diamond drops
 function brk(b,qx,qy,f){b.dead=1;
-  for(let j=0;j<4;j++)for(let i=0;i<4;i++){const x=b.x+i*8-12,y=b.y+j*8-12,dx=x-qx,dy=y-qy,d=Math.hypot(dx,dy)+1,k=(.4+R())*f;
-    add({x,y,vx:dx/d*k,vy:dy/d*k-f*.4,sx:i*4,sy:j*4,sw:4,s:8,t:0,l:2+R()*1.5})}
-  for(let n=R()<.3?2:1;n--;)I.push({x:b.x,y:b.y,vx:(R()-.5)*240,vy:-250-R()*200,t:0});
+  for(let j=0;j<4;j++)for(let i=0;i<4;i++){const x=b.x+(i-1.5)*S/4,y=b.y+(j-1.5)*S/4,dx=x-qx,dy=y-qy,d=Math.hypot(dx,dy)+1,k=(.4+R())*f;
+    add({x,y,vx:dx/d*k,vy:dy/d*k-f*.5,sx:i*4,sy:j*4,sw:4,t:0,l:2.2+R()*1.5})}
+  for(let n=R()<.3?2:1;n--;)I.push({x:b.x,y:b.y,vx:(R()-.5)*200,vy:-260-R()*160,t:0});
   TW&&TW.HapticFeedback&&TW.HapticFeedback.impactOccurred('medium')}
 function step(dt){
-  for(const b of B){b.vy+=GR*dt;b.y+=b.vy*dt;if(b.y+S/2>=fy){b.y=fy-S/2;brk(b,b.x,fy,b.vy*.25+150)}}
+  for(const b of B){b.vy=Math.min(VMAX,b.vy+GB*dt);b.y+=b.vy*dt;if(b.y+S/2>=fy){b.y=fy-S/2;brk(b,b.x,fy,b.vy*.5+140)}}
   keep(B,b=>!b.dead);
-  for(const p of P){p.vy+=GR*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.t+=dt;const r=p.s/2;
+  for(const p of P){p.vy+=GP*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.t+=dt;const r=p.sw*K/2;
     if(p.y>fy-r){p.y=fy-r;
       // hard landing splits a chunk into four 2x2 shards
-      if(p.vy>600&&p.sw==4){p.dead=1;for(let i=0;i<4;i++)add({x:p.x+(i%2-.5)*4,y:p.y,vx:p.vx+(R()-.5)*240,vy:-p.vy*(.2+R()*.3),
-        sx:p.sx+(i%2)*2,sy:p.sy+(i>>1)*2,sw:2,s:4,t:p.t,l:p.l})}
-      else{p.vy*=-.3;p.vx*=.7;if(p.vy>-45)p.vy=0,p.vx*=.85}}
+      if(p.vy>380&&p.sw==4){p.dead=1;for(let i=0;i<4;i++)add({x:p.x+(i%2-.5)*r,y:p.y,vx:p.vx+(R()-.5)*200,vy:-p.vy*(.2+R()*.3),
+        sx:p.sx+(i%2)*2,sy:p.sy+(i>>1)*2,sw:2,t:p.t,l:p.l})}
+      else{p.vy*=-.3;p.vx*=.7;if(p.vy>-40)p.vy=0,p.vx*=.85}}
     if(p.x<r||p.x>W-r){p.x=p.x<r?r:W-r;p.vx*=-.5}}
   keep(P,p=>!p.dead&&p.t<p.l);
   for(const i of I){i.t+=dt;
-    if(i.t>1.2){i.x+=(28-i.x)*Math.min(1,dt*9);i.y+=(28-i.y)*Math.min(1,dt*9);
-      if(Math.abs(i.x-28)+Math.abs(i.y-28)<6){i.dead=1;cnt++;pop=.15;localStorage.n=cnt}}
-    else{i.vy+=GR*dt;i.x+=i.vx*dt;i.y+=i.vy*dt;i.vx*=.98;if(i.y>fy-8){i.y=fy-8;i.vy*=-.35;i.vx*=.6}
-      if(i.x<8||i.x>W-8){i.x=i.x<8?8:W-8;i.vx*=-.5}}}
+    if(i.t>1.4){const e=Math.min(1,dt*7);i.x+=(28-i.x)*e;i.y+=(28-i.y)*e;if(Math.abs(i.x-28)+Math.abs(i.y-28)<6)i.dead=1,pop=.15}
+    else{i.vy+=GP*dt;i.x+=i.vx*dt;i.y+=i.vy*dt;i.vx*=.98;if(i.y>fy-12){i.y=fy-12;i.vy*=-.35;i.vx*=.6}
+      if(i.x<12||i.x>W-12){i.x=i.x<12?12:W-12;i.vx*=-.5}}}
   keep(I,i=>!i.dead);
-  for(const c of CL)if((c.x+=dt*7)>W)c.x=-c.w;
+  for(const c of CL)if((c.x+=dt*c.v)>W)c.x=-c.t.width*8;
   pop-=dt;
-  if((next-=dt)<0&&B.length<4){spawn();next=.8+R()}}
+  if((next-=dt)<0&&B.length<4){spawn();next=1.2+R()*1.2}}
 function draw(t){
   g.setTransform(D,0,0,D,0,0);g.globalAlpha=1;
-  g.fillStyle=SKY;g.fillRect(0,0,W,fy);
-  g.fillStyle='rgba(255,255,255,.85)';for(const c of CL)g.fillRect(c.x|0,c.y|0,c.w|0,12);
+  g.drawImage(BG,0,0,W,fy);
+  for(const c of CL)g.drawImage(c.t,q(c.x),c.y,c.t.width*8,32);
   for(let x=0;x<W;x+=S)g.drawImage(GRASS,x,fy,S,S);
-  g.fillStyle='#593d29';g.fillRect(0,fy+S,W,H);
-  for(const b of B){const x=b.x-16|0,y=b.y-16|0;g.drawImage(ORE,x,y,S,S);b.h&&g.drawImage(CR[b.h-1],x,y,S,S)}
-  for(const p of P){const a=(p.l-p.t)/.5;if(a<1)g.globalAlpha=a;
-    g.drawImage(ORE,p.sx,p.sy,p.sw,p.sw,p.x-p.s/2|0,p.y-p.s/2|0,p.s,p.s);if(a<1)g.globalAlpha=1}
-  for(const i of I)g.drawImage(GEM,i.x-8|0,i.y-8-(i.t<1.2?Math.sin(t/180)*2+2:0)|0,16,16);
-  const z=pop>0?2:0;g.drawImage(SLOT,8-z,8-z,40+2*z,40+2*z);
-  g.fillStyle='#3f3f3f';g.fillText(cnt,46,46);g.fillStyle='#fff';g.fillText(cnt,44.5,44.5)}
+  g.fillStyle='#4a321f';g.fillRect(0,fy+S,W,H);
+  for(const b of B){const k=Math.max(0,1-(fy-b.y)/300);g.globalAlpha=k;g.drawImage(SH,b.x-S*.4*(1+k)/2*1.4,fy-6,S*.8*(1+k)/2*1.4,12)}
+  g.globalAlpha=1;
+  for(const b of B){const x=q(b.x-S/2),y=q(b.y-S/2);g.drawImage(ORE,x,y,S,S);b.h&&g.drawImage(CR[b.h-1],x,y,S,S)}
+  for(const p of P){const a=(p.l-p.t)/.5,s=p.sw*K;if(a<1)g.globalAlpha=a;
+    g.drawImage(ORE,p.sx,p.sy,p.sw,p.sw,q(p.x-s/2),q(p.y-s/2),s,s);if(a<1)g.globalAlpha=1}
+  for(const i of I)g.drawImage(GEM,q(i.x-12),q(i.y-12-(i.t<1.4?Math.sin(t/180)*2+2:0)),24,24);
+  const z=pop>0?2:0;g.drawImage(SLOT,8-z,8-z,40+2*z,40+2*z)}
 function loop(now){const dt=Math.min(.033,(now-(last||now))/1000);last=now;step(dt);draw(now);requestAnimationFrame(loop)}
 cv.addEventListener('pointerdown',e=>{
-  const x=e.offsetX,y=e.offsetY,b=B.find(b=>Math.abs(x-b.x)<S/2+10&&Math.abs(y-b.y)<S/2+10);
-  if(b){if(++b.h>=3)brk(b,x,y,380);
-    else{b.vy*=.4;for(let k=0;k<3;k++)add({x,y,vx:(R()-.5)*200,vy:-100-R()*150,sx:R()*14|0,sy:R()*14|0,sw:2,s:4,t:0,l:1});
+  const x=e.offsetX,y=e.offsetY,b=B.find(b=>Math.abs(x-b.x)<S/2+8&&Math.abs(y-b.y)<S/2+8);
+  if(b){if(++b.h>=3)brk(b,x,y,300);
+    else{b.vy*=.3;for(let k=0;k<3;k++)add({x,y,vx:(R()-.5)*180,vy:-80-R()*140,sx:R()*14|0,sy:R()*14|0,sw:2,t:0,l:1});
       TW&&TW.HapticFeedback&&TW.HapticFeedback.impactOccurred('light')}}
   else if(y<fy)spawn(x)});
 if(window.ResizeObserver)new ResizeObserver(fit).observe(cv);

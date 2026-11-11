@@ -21,7 +21,7 @@ async function api(method, body = {}) {
 }
 
 function sendWidget(chat_id) {
-  return api('sendWidget', { chat_id, html, height: 340, caption: '⛏ Тапай по руде, чтобы добыть алмазы' });
+  return api('sendWidget', { chat_id, html, height: 360 });
 }
 
 async function handle(msg) {

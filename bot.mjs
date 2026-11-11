@@ -1,4 +1,4 @@
-// Long-polling bot: /diamonds (or /start) sends a fresh diamond-rain widget.
+// Long-polling bot: /diamonds (or /start) and /bankai send fresh widgets.
 // Usage: BOT_TOKEN=... node bot.mjs
 import { readFileSync } from 'node:fs';
 
@@ -7,7 +7,12 @@ if (!BOT_TOKEN) {
   console.error('Set BOT_TOKEN');
   process.exit(1);
 }
-const html = readFileSync(new URL('./widget.html', import.meta.url), 'utf8');
+const load = f => readFileSync(new URL(`./${f}`, import.meta.url), 'utf8');
+const WIDGETS = {
+  '/diamonds': { html: load('widget.html'), height: 360 },
+  '/start': { html: load('widget.html'), height: 360 },
+  '/bankai': { html: load('bankai.html'), height: 440 },
+};
 
 async function api(method, body = {}) {
   const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
@@ -20,15 +25,11 @@ async function api(method, body = {}) {
   return data.result;
 }
 
-function sendWidget(chat_id) {
-  return api('sendWidget', { chat_id, html, height: 360 });
-}
-
 async function handle(msg) {
-  const cmd = (msg.text || '').split(/[\s@]/)[0];
-  if (cmd !== '/diamonds' && cmd !== '/start') return;
+  const w = WIDGETS[(msg.text || '').split(/[\s@]/)[0]];
+  if (!w) return;
   try {
-    await sendWidget(msg.chat.id);
+    await api('sendWidget', { chat_id: msg.chat.id, ...w });
   } catch (e) {
     console.error(e.message);
     // widgets are private-chat only in production
@@ -36,9 +37,12 @@ async function handle(msg) {
   }
 }
 
-await api('setMyCommands', { commands: [{ command: 'diamonds', description: '⛏ Прислать новый виджет с алмазной рудой' }] });
+await api('setMyCommands', { commands: [
+  { command: 'diamonds', description: '⛏ Прислать новый виджет с алмазной рудой' },
+  { command: 'bankai', description: '🗡 Банкай Гина — Камишини но Яри' },
+] });
 const me = await api('getMe');
-console.log(`@${me.username} is running. Send /diamonds in the chat.`);
+console.log(`@${me.username} is running. Commands: /diamonds, /bankai`);
 
 let offset = 0;
 for (;;) {

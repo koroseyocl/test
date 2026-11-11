@@ -16,4 +16,6 @@ BOT_TOKEN=123:abc CHAT_ID=111 node send.mjs     # отправить (тольк
 BOT_TOKEN=123:abc node bot.mjs                  # Windows cmd: set BOT_TOKEN=123:abc& node bot.mjs
 ```
 
-Локально можно открыть `widget.html` в браузере.
+`bankai.html` — банкай Гина (神殺鎗) в стиле манги: ~3-секундная анимация тушью, луп, тап перезапускает. Отправка: `node send.mjs bankai.html` или `/bankai` в боте.
+
+Локально можно открыть `widget.html` / `bankai.html` в браузере.
